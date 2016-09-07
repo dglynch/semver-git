@@ -29,23 +29,28 @@ import org.gradle.api.Plugin
 
 class SemverGitPlugin implements Plugin<Project> {
 
-    def static String getGitVersion(String nextVersion, String snapshotSuffix, File projectDir = null) {
-        def proc = "git describe --exact-match".execute(null, projectDir);
-        proc.waitFor();
-        if (proc.exitValue() == 0) {
-            return checkVersion(proc.text.trim());
-        }
-        proc = "git describe".execute(null, projectDir);
+    def static String getGitVersion(String nextVersion, String snapshotSuffix, String dirtyMark, File projectDir = null) {
+        def proc = "git describe --exact-match --dirty".execute(null, projectDir);
         proc.waitFor();
         if (proc.exitValue() == 0) {
             def describe = proc.text.trim()
-            def version = (describe =~ /-[0-9]+-g[0-9a-f]+$/).replaceFirst("")
-            def suffixMatcher = (describe =~ /-([0-9]+)-g([0-9a-f]+)$/)
+            if (!describe.contains("-dirty") || !snapshotSuffix.contains("<dirty>")) {
+                return checkVersion(describe.replaceAll("-dirty", ""));
+            }
+        }
+        proc = "git describe --long --dirty".execute(null, projectDir);
+        proc.waitFor();
+        if (proc.exitValue() == 0) {
+            def describe = proc.text.trim()
+            def version = (describe =~ /-[0-9]+-g[0-9a-f]+(-dirty)?$/).replaceFirst("")
+            def suffixMatcher = (describe =~ /-([0-9]+)-g([0-9a-f]+)(-dirty)?$/)
             def count = suffixMatcher[0][1];
             def sha = suffixMatcher[0][2];
+            def dirty = describe.contains("-dirty")
             def suffix = snapshotSuffix;
             suffix = suffix.replaceAll("<count>", count);
             suffix = suffix.replaceAll("<sha>", sha);
+            suffix = suffix.replaceAll("<dirty>", dirty ? dirtyMark : "");
             return getNextVersion(version, nextVersion, suffix);
         }
         return getNextVersion("0.0.0", nextVersion, "SNAPSHOT")
@@ -105,13 +110,17 @@ class SemverGitPlugin implements Plugin<Project> {
     void apply(Project project) {
         def nextVersion = "minor"
         def snapshotSuffix = "SNAPSHOT"
+        def dirtyMark = "-dirty"
         if (project.ext.properties.containsKey("nextVersion")) {
             nextVersion = project.ext.nextVersion
         }
         if (project.ext.properties.containsKey("snapshotSuffix")) {
             snapshotSuffix = project.ext.snapshotSuffix
         }
-        project.version = getGitVersion(nextVersion, snapshotSuffix, project.projectDir)
+        if (project.ext.properties.containsKey("dirtyMark")) {
+            dirtyMark = project.ext.dirtyMark
+        }
+        project.version = getGitVersion(nextVersion, snapshotSuffix, dirtyMark, project.projectDir)
         project.task('showVersion') {
             group = 'Help'
             description = 'Show the project version'
