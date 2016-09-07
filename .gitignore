@@ -1,6 +1,7 @@
 *~
 .nb-gradle
 .nb-gradle-properties
+.idea
 .gradle
 /build
 /buildSrc/build
